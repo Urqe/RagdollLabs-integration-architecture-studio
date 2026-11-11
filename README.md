@@ -43,9 +43,22 @@ No live enterprise connectors, hosted accounts, execution of AI tools or AI-gene
 
 TypeScript, React, React Flow / XYFlow, Zustand, Zod, IndexedDB, ELK.js, Vitest and Playwright.
 
+## Development preview (v0.1)
+
+The feature branch contains an initial React/TypeScript implementation with a two-mode graph editor, property inspector, local autosave, JSON import/export, Markdown report, demo project, basic validation and unit tests. This is an early vertical slice, not the complete documented v0.1 specification.
+
+```bash
+npm install
+npm test
+npm run dev
+npm run build
+```
+
+Core design and validation fields are still deliberately incomplete (for example, requirement mapping, rules coverage, and full documentation exports). Hosting remains disabled for this private repository unless deliberately configured.
+
 ## Status
 
-**Planning / foundation.** This repository currently contains specifications, not a functioning application.
+**Prototype in progress.** Features beyond this initial vertical slice remain planned.
 
 ## Security
 
