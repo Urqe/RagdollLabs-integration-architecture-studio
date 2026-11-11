@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import ReactFlow,{Background,Controls,MiniMap,MarkerType,applyNodeChanges,type Node,type Edge,type NodeChange,type Connection,type OnSelectionChangeParams} from '@xyflow/react';
 import {Bot,Boxes,Download,FileUp,GitBranchPlus,Plus,RotateCcw,ShieldCheck,Trash2} from 'lucide-react';
-import {ComponentKind,InterfaceKind,newId,parseProject,removeComponent,removeInterface,sampleProject,updateComponent,updateInterface,type ArchitectureInterface,type Component,type Project,type ViewMode} from './model';
+import {ComponentKind,InterfaceKind,newId,removeComponent,removeInterface,sampleProject,updateComponent,updateInterface,type ArchitectureInterface,type Component,type Project,type ViewMode} from './model';
 import {loadProject,saveProject,exportProject,importProject} from './storage';
 import {validateProject} from './validation';
 
@@ -76,13 +76,6 @@ export default function App(){
   };
   const reset=()=>{if(window.confirm('Replace this project with the example? Your current local changes will be lost.')){setProject(sampleProject());setSelected(null);}};
   const exportMarkdown=()=>downloadText('architecture-report.md',summarizeModel(project),'text/markdown');
-  const exportSVG=()=>{
-    const root=document.querySelector('.react-flow__viewport') as SVGGElement|null;
-    // XYFlow renders nodes as HTML; exporting viewport SVG alone would omit them.
-    // Explicitly avoid suggesting this is a complete diagram export.
-    if(!root){setError('Graph not available.');return;}
-    exportMarkdown();
-  };
   return <div className="app-shell">
     <header className="topbar"><div className="brand"><div className="brand-mark">R<span>·</span></div><div><strong>RagDollLabs</strong><span>Integration Architecture Studio <em>0.1</em></span></div></div>
       <div className="top-actions"><button onClick={()=>fileRef.current?.click()}><FileUp size={16}/> Import</button><input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={e=>{void handleImport(e.target.files?.[0]);e.target.value='';}}/>
