@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import ReactFlow,{Background,Controls,MiniMap,MarkerType,applyNodeChanges,type Node,type Edge,type NodeChange,type Connection,type OnSelectionChangeParams} from '@xyflow/react';
+import {ReactFlow,Background,Controls,MiniMap,MarkerType,applyNodeChanges,type Node,type Edge,type NodeChange,type Connection,type OnSelectionChangeParams} from '@xyflow/react';
 import {Bot,Boxes,Download,FileUp,GitBranchPlus,Plus,RotateCcw,ShieldCheck,Trash2} from 'lucide-react';
 import {ComponentKind,InterfaceKind,newId,removeComponent,removeInterface,sampleProject,updateComponent,updateInterface,type ArchitectureInterface,type Component,type Project,type ViewMode} from './model';
 import {loadProject,saveProject,exportProject,importProject} from './storage';
