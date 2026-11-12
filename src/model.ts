@@ -28,6 +28,7 @@ export const ComponentSchema = z.object({
 export const InterfaceSchema = z.object({
   id:z.string().min(1), name:z.string().min(1), kind:InterfaceKind,
   sourceId:z.string().min(1), targetId:z.string().min(1),
+  capabilityId:z.string().min(1).optional(),
   protocol:z.string(), authentication:z.string(), authorization:z.string(),
   contract:z.string(), owner:z.string(), description:z.string(),
   idempotency:z.enum(['unknown','defined','not-applicable']),
@@ -54,6 +55,11 @@ export const ProjectSchema = z.object({
     if(links.has(e.id))ctx.addIssue({code:'custom',message:'Duplicate interface ID',path:['interfaces',i,'id']});
     links.add(e.id);
     if(!nodes.has(e.sourceId)||!nodes.has(e.targetId))ctx.addIssue({code:'custom',message:'Unknown source or target',path:['interfaces',i]});
+    if(e.capabilityId){
+      const capability=p.capabilities.find(c=>c.id===e.capabilityId);
+      if(!capability)ctx.addIssue({code:'custom',message:'Interface refers to missing capability',path:['interfaces',i,'capabilityId']});
+      else if(capability.componentId!==e.targetId)ctx.addIssue({code:'custom',message:'Consumed capability must belong to target asset',path:['interfaces',i,'capabilityId']});
+    }
   });
 });
 export type Component = z.infer<typeof ComponentSchema>;
@@ -80,9 +86,9 @@ export function sampleProject():Project {
     interfaces:[
       {id:'customer-sync',name:'Customer sync',kind:'integration',sourceId:'salesforce',targetId:'workato',protocol:'REST / JSON',authentication:'OAuth 2.0',authorization:'Service scope',contract:'OpenAPI (planned)',owner:'Integration team',description:'Synchronize customer details',idempotency:'defined',observability:'defined',enforcement:'not-applicable',access:'write'},
       {id:'erp-post',name:'ERP invoice exchange',kind:'integration',sourceId:'workato',targetId:'sap',protocol:'OData',authentication:'OAuth 2.0',authorization:'Restricted service role',contract:'OData service metadata',owner:'ERP integration',description:'Deliver validated invoice records',idempotency:'unknown',observability:'defined',enforcement:'not-applicable',access:'write'},
-      {id:'tool-invoke',name:'get_invoice',kind:'tool',sourceId:'agent',targetId:'gateway',protocol:'MCP tool',authentication:'Agent identity',authorization:'Invoice.read',contract:'JSON input/output schema',owner:'AI platform',description:'Look up an invoice by ID',idempotency:'not-applicable',observability:'defined',enforcement:'documented',access:'read'},
-      {id:'tool-backend',name:'Invoice read API',kind:'tool',sourceId:'gateway',targetId:'api',protocol:'HTTPS REST',authentication:'Workload identity',authorization:'Invoice.read',contract:'OpenAPI',owner:'AI platform',description:'Downstream read-only invoice lookup',idempotency:'not-applicable',observability:'defined',enforcement:'unknown',access:'read'},
-      {id:'invoice-fetch',name:'Read ERP invoice',kind:'integration',sourceId:'api',targetId:'sap',protocol:'OData',authentication:'OAuth 2.0',authorization:'Read-only role',contract:'OData service metadata',owner:'ERP integration',description:'Fetch invoice details',idempotency:'not-applicable',observability:'defined',enforcement:'not-applicable',access:'read'}
+      {id:'tool-invoke',name:'get_invoice',kind:'tool',sourceId:'agent',targetId:'gateway',capabilityId:'invoice-read-cap',protocol:'MCP tool',authentication:'Agent identity',authorization:'Invoice.read',contract:'JSON input/output schema',owner:'AI platform',description:'Look up an invoice by ID',idempotency:'not-applicable',observability:'defined',enforcement:'documented',access:'read'},
+      {id:'tool-backend',name:'Invoice read API',kind:'tool',sourceId:'gateway',targetId:'api',capabilityId:'invoice-api-cap',protocol:'HTTPS REST',authentication:'Workload identity',authorization:'Invoice.read',contract:'OpenAPI',owner:'AI platform',description:'Downstream read-only invoice lookup',idempotency:'not-applicable',observability:'defined',enforcement:'unknown',access:'read'},
+      {id:'invoice-fetch',name:'Read ERP invoice',kind:'integration',sourceId:'api',targetId:'sap',capabilityId:'erp-read-cap',protocol:'OData',authentication:'OAuth 2.0',authorization:'Read-only role',contract:'OData service metadata',owner:'ERP integration',description:'Fetch invoice details',idempotency:'not-applicable',observability:'defined',enforcement:'not-applicable',access:'read'}
     ]
   };
 }
@@ -91,7 +97,12 @@ export function updateComponent(project:Project,id:string,patch:Partial<Componen
   return {...project,components:project.components.map(c=>c.id===id?{...c,...patch,id:c.id}:c)};
 }
 export function updateInterface(project:Project,id:string,patch:Partial<ArchitectureInterface>):Project {
-  return {...project,interfaces:project.interfaces.map(e=>e.id===id?{...e,...patch,id:e.id}:e)};
+  return {...project,interfaces:project.interfaces.map(e=>{
+    if(e.id!==id)return e;
+    const next={...e,...patch,id:e.id};
+    if(next.capabilityId&&!project.capabilities.some(c=>c.id===next.capabilityId&&c.componentId===next.targetId))next.capabilityId=undefined;
+    return next;
+  })};
 }
 export function removeComponent(project:Project,id:string):Project {
   return {...project,components:project.components.filter(c=>c.id!==id),interfaces:project.interfaces.filter(e=>e.sourceId!==id&&e.targetId!==id),capabilities:project.capabilities.filter(c=>c.componentId!==id)};
@@ -108,7 +119,7 @@ export function updateCapability(project:Project,id:string,patch:Partial<Capabil
   return {...project,capabilities:project.capabilities.map(c=>c.id===id?{...c,...patch,id:c.id,componentId:c.componentId}:c)};
 }
 export function removeCapability(project:Project,id:string):Project {
-  return {...project,capabilities:project.capabilities.filter(c=>c.id!==id)};
+  return {...project,capabilities:project.capabilities.filter(c=>c.id!==id),interfaces:project.interfaces.map(e=>e.capabilityId===id?{...e,capabilityId:undefined}:e)};
 }
 export function createFromTemplate(project:Project,index:number):Project {
   const template=COMPONENT_TEMPLATES[index];
