@@ -12,15 +12,14 @@ action, a future “Start blank” action, and a guided walkthrough once the cor
 **Status:** Example data and restore action already exist. A guided walkthrough, starter
 templates, and browser-level onboarding tests remain planned.
 
-## Milestone 1 — Editor usefulness and reusable assets (in progress)
+## Milestone 1 — Editor reliability and reusable assets (in progress)
 
 - Reusable component templates for SAP, D365, Workato, Azure and generic services.
 - First-class capability catalog with ownership, operations, access and evidence provenance.
 - Preserve legacy projects during introduction of new optional schema fields.
 - Correct node position handling so non-movement UI events do not mutate the project.
 - Add capability editing and export, with unit tests.
-- Interfaces now link explicitly to target-owned capabilities, including AI tools. Next: expand rule coverage, add undo/redo,
-  browser end-to-end tests, and resolve reported dependency advisories.
+- Interfaces now link explicitly to target-owned capabilities, including AI tools. Extended rule coverage, bounded undo/redo with grouped drag operations, and Playwright browser smoke tests implemented on the reliability branch.\n- Next: address dependency audit findings, lock dependency versions, improve browser accessibility, and complete full scenario-based acceptance testing.
 
 
 ## v0.1 — Useful offline modeling
