@@ -19,7 +19,7 @@ templates, and browser-level onboarding tests remain planned.
 - Preserve legacy projects during introduction of new optional schema fields.
 - Correct node position handling so non-movement UI events do not mutate the project.
 - Add capability editing and export, with unit tests.
-- Next: map interfaces to specific capabilities, expand rule coverage, add undo/redo,
+- Interfaces now link explicitly to target-owned capabilities, including AI tools. Next: expand rule coverage, add undo/redo,
   browser end-to-end tests, and resolve reported dependency advisories.
 
 
