@@ -2,6 +2,25 @@ import { z } from 'zod';
 
 export const ComponentKind = z.enum(['system','ipaas','gateway','agent','external']);
 export const InterfaceKind = z.enum(['integration','tool']);
+export const CapabilitySchema = z.object({
+  id:z.string().min(1), componentId:z.string().min(1), name:z.string().min(1),
+  kind:z.enum(['api','mcp-tool','event','file','agent-delegation']),
+  operation:z.string(), description:z.string(),
+  access:z.enum(['unknown','read','write','approve']),
+  evidence:z.enum(['template','declared','verified'])
+});
+export type Capability = z.infer<typeof CapabilitySchema>;
+export const COMPONENT_TEMPLATES = [
+  {name:'SAP S/4HANA',kind:'system',description:'ERP system; verify actual deployed interfaces'},
+  {name:'Microsoft Dynamics 365',kind:'system',description:'Business applications; available APIs vary by workload'},
+  {name:'Salesforce',kind:'system',description:'CRM platform'},
+  {name:'Workato',kind:'ipaas',description:'Integration and automation platform'},
+  {name:'Azure Logic Apps',kind:'ipaas',description:'Azure workflow integration service'},
+  {name:'REST API',kind:'external',description:'Custom API service'},
+  {name:'Event Broker',kind:'system',description:'Publish/subscribe messaging'},
+  {name:'MCP Gateway',kind:'gateway',description:'Agent tool exposure and authorization boundary'},
+  {name:'AI Agent',kind:'agent',description:'AI client that may invoke authorized tools'}
+] as const satisfies ReadonlyArray<{name:string;kind:z.infer<typeof ComponentKind>;description:string}>;
 export const ComponentSchema = z.object({
   id:z.string().min(1), name:z.string().min(1), kind:ComponentKind, description:z.string(),
   x:z.number().finite(), y:z.number().finite()
@@ -19,10 +38,17 @@ export const InterfaceSchema = z.object({
 export const ProjectSchema = z.object({
   version:z.literal(1), id:z.string().min(1), name:z.string().min(1),
   description:z.string(), components:z.array(ComponentSchema),
-  interfaces:z.array(InterfaceSchema)
+  interfaces:z.array(InterfaceSchema),
+  capabilities:z.array(CapabilitySchema).default([])
 }).superRefine((p,ctx)=>{
   const nodes = new Set<string>();
   p.components.forEach((n,i)=>{if(nodes.has(n.id))ctx.addIssue({code:'custom',message:'Duplicate component ID',path:['components',i,'id']});nodes.add(n.id)});
+  const capabilities = new Set<string>();
+  p.capabilities.forEach((c,i)=>{
+    if(capabilities.has(c.id))ctx.addIssue({code:'custom',message:'Duplicate capability ID',path:['capabilities',i,'id']});
+    capabilities.add(c.id);
+    if(!nodes.has(c.componentId))ctx.addIssue({code:'custom',message:'Capability has unknown owner component',path:['capabilities',i,'componentId']});
+  });
   const links = new Set<string>();
   p.interfaces.forEach((e,i)=>{
     if(links.has(e.id))ctx.addIssue({code:'custom',message:'Duplicate interface ID',path:['interfaces',i,'id']});
@@ -46,6 +72,11 @@ export function sampleProject():Project {
       {id:'gateway',name:'Tool Gateway',kind:'gateway',description:'Policy enforcement and tool dispatch',x:320,y:330},
       {id:'api',name:'Invoice Service',kind:'external',description:'Facade for authorized invoice reads',x:620,y:330}
     ],
+    capabilities:[
+    {id:'invoice-read-cap',componentId:'gateway',name:'get_invoice',kind:'mcp-tool',operation:'get_invoice(invoiceId)',description:'Lookup one invoice by ID',access:'read',evidence:'declared'},
+    {id:'invoice-api-cap',componentId:'api',name:'Read invoice API',kind:'api',operation:'GET /invoices/{id}',description:'Backend read operation',access:'read',evidence:'declared'},
+    {id:'erp-read-cap',componentId:'sap',name:'Invoice OData service',kind:'api',operation:'GET Invoice',description:'ERP read surface; deployment not verified',access:'read',evidence:'template'}
+  ],
     interfaces:[
       {id:'customer-sync',name:'Customer sync',kind:'integration',sourceId:'salesforce',targetId:'workato',protocol:'REST / JSON',authentication:'OAuth 2.0',authorization:'Service scope',contract:'OpenAPI (planned)',owner:'Integration team',description:'Synchronize customer details',idempotency:'defined',observability:'defined',enforcement:'not-applicable',access:'write'},
       {id:'erp-post',name:'ERP invoice exchange',kind:'integration',sourceId:'workato',targetId:'sap',protocol:'OData',authentication:'OAuth 2.0',authorization:'Restricted service role',contract:'OData service metadata',owner:'ERP integration',description:'Deliver validated invoice records',idempotency:'unknown',observability:'defined',enforcement:'not-applicable',access:'write'},
@@ -63,8 +94,25 @@ export function updateInterface(project:Project,id:string,patch:Partial<Architec
   return {...project,interfaces:project.interfaces.map(e=>e.id===id?{...e,...patch,id:e.id}:e)};
 }
 export function removeComponent(project:Project,id:string):Project {
-  return {...project,components:project.components.filter(c=>c.id!==id),interfaces:project.interfaces.filter(e=>e.sourceId!==id&&e.targetId!==id)};
+  return {...project,components:project.components.filter(c=>c.id!==id),interfaces:project.interfaces.filter(e=>e.sourceId!==id&&e.targetId!==id),capabilities:project.capabilities.filter(c=>c.componentId!==id)};
 }
 export function removeInterface(project:Project,id:string):Project {
   return {...project,interfaces:project.interfaces.filter(e=>e.id!==id)};
+}
+
+export function addCapability(project:Project,componentId:string,kind:Capability['kind']='api'):Project {
+  if(!project.components.some(c=>c.id===componentId))return project;
+  return {...project,capabilities:[...project.capabilities,{id:newId('cap'),componentId,name:'New capability',kind,operation:'',description:'',access:'unknown',evidence:'declared'}]};
+}
+export function updateCapability(project:Project,id:string,patch:Partial<Capability>):Project {
+  return {...project,capabilities:project.capabilities.map(c=>c.id===id?{...c,...patch,id:c.id,componentId:c.componentId}:c)};
+}
+export function removeCapability(project:Project,id:string):Project {
+  return {...project,capabilities:project.capabilities.filter(c=>c.id!==id)};
+}
+export function createFromTemplate(project:Project,index:number):Project {
+  const template=COMPONENT_TEMPLATES[index];
+  if(!template)return project;
+  const component:Component={id:newId('component'),name:template.name,kind:template.kind,description:template.description,x:110+project.components.length*37,y:130+project.components.length*29};
+  return {...project,components:[...project.components,component]};
 }
