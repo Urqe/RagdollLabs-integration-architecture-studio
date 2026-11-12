@@ -1,5 +1,28 @@
 # Implementation Roadmap
 
+## First-run demo experience — explicit product requirement
+
+On first launch, show a complete, **fictional and editable** example architecture by default.
+The sample must illustrate traditional SAP / iPaaS interfaces alongside AI agent tool access,
+include explanatory metadata, and expose intentional design gaps that the validation engine
+can explain. It must never imply connection to real systems. Existing user projects must not
+be silently overwritten on a subsequent visit. Provide a clearly labeled “Restore example”
+action, a future “Start blank” action, and a guided walkthrough once the core editor is stable.
+
+**Status:** Example data and restore action already exist. A guided walkthrough, starter
+templates, and browser-level onboarding tests remain planned.
+
+## Milestone 1 — Editor usefulness and reusable assets (in progress)
+
+- Reusable component templates for SAP, D365, Workato, Azure and generic services.
+- First-class capability catalog with ownership, operations, access and evidence provenance.
+- Preserve legacy projects during introduction of new optional schema fields.
+- Correct node position handling so non-movement UI events do not mutate the project.
+- Add capability editing and export, with unit tests.
+- Next: map interfaces to specific capabilities, expand rule coverage, add undo/redo,
+  browser end-to-end tests, and resolve reported dependency advisories.
+
+
 ## v0.1 — Useful offline modeling
 
 1. Define domain TypeScript types and Zod schemas with fixtures.
