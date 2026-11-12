@@ -18,7 +18,7 @@ describe('architecture model',()=>{
     expect(q.interfaces.every(e=>e.sourceId!=='sap'&&e.targetId!=='sap')).toBe(true);
   });
   it('loads legacy projects without capabilities and preserves the default example',()=>{
-    const legacy=sampleProject() as Record<string,unknown>;delete legacy.capabilities;
+    const legacy=sampleProject() as Record<string,unknown>;delete legacy.capabilities;for(const link of legacy.interfaces as Record<string,unknown>[]){delete link.capabilityId;}
     expect(parseProject(legacy).capabilities).toEqual([]);
     expect(sampleProject().capabilities.some(c=>c.kind==='mcp-tool')).toBe(true);
   });
