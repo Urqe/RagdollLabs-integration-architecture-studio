@@ -14,7 +14,7 @@ The Studio is a public static React/Vite application. No backend credentials or 
 ## Dependency controls
 
 - CI executes unit tests, TypeScript/Vite build, and Chromium browser smoke tests.
-- CI runs `npm audit --omit=dev --audit-level=high` to inspect production dependencies. Investigate findings before release.
+- CI blocks on `npm audit --omit=dev --audit-level=high` for production dependencies. Zod was upgraded to the patched 4.x line after a high-severity advisory was found; the full suite and audit must pass on CI before merge.
 - Development-only toolchain advisories also need review; use `npm audit` and prioritize exploited or critical paths.
 - Pin dependencies via a committed lockfile in a later dependency-hardening change and use `npm ci` once available.
 
