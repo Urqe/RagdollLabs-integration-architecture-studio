@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {ReactFlow,Background,Controls,MiniMap,MarkerType,applyNodeChanges,type Node,type Edge,type NodeChange,type Connection,type OnSelectionChangeParams} from '@xyflow/react';
 import {Bot,Boxes,Download,FileUp,GitBranchPlus,Plus,RotateCcw,ShieldCheck,Trash2} from 'lucide-react';
-import {ComponentKind,InterfaceKind,newId,removeComponent,removeInterface,sampleProject,updateComponent,updateInterface,type ArchitectureInterface,type Component,type Project,type ViewMode} from './model';
+import {ComponentKind,COMPONENT_TEMPLATES,CapabilitySchema,addCapability,createFromTemplate,updateCapability,removeCapability,InterfaceKind,newId,removeComponent,removeInterface,sampleProject,updateComponent,updateInterface,type ArchitectureInterface,type Component,type Capability,type Project,type ViewMode} from './model';
 import {loadProject,saveProject,exportProject,importProject} from './storage';
 import {validateProject} from './validation';
 
@@ -13,7 +13,7 @@ const emptyInterface=(sourceId:string,targetId:string,kind:ArchitectureInterface
 });
 function summarizeModel(p:Project):string {
   return '# '+p.name+'\n\n'+p.description+'\n\n## Components\n'+p.components.map(c=>'- '+c.name+' ('+kindNames[c.kind]+'): '+c.description).join('\n')+
-  '\n\n## Interfaces\n'+p.interfaces.map(e=>'- **'+e.name+'**: '+p.components.find(c=>c.id===e.sourceId)?.name+' → '+p.components.find(c=>c.id===e.targetId)?.name+' | '+e.protocol+' | '+e.kind+' | owner: '+(e.owner||'Unknown')).join('\n')+
+  '\n\n## Capabilities\n'+p.capabilities.map(c=>'- '+c.name+' ('+c.kind+') on '+p.components.find(n=>n.id===c.componentId)?.name+'; '+c.operation+'; evidence: '+c.evidence).join('\n')+ '\n\n## Interfaces\n'+p.interfaces.map(e=>'- **'+e.name+'**: '+p.components.find(c=>c.id===e.sourceId)?.name+' → '+p.components.find(c=>c.id===e.targetId)?.name+' | '+e.protocol+' | '+e.kind+' | owner: '+(e.owner||'Unknown')).join('\n')+
   '\n\n## Validation findings\n'+validateProject(p).map(f=>'- ['+f.severity+'] '+f.interfaceId+': '+f.message).join('\n')+'\n';
 }
 function downloadText(name:string,text:string,type:string):void {
@@ -23,7 +23,7 @@ function downloadText(name:string,text:string,type:string):void {
 export default function App(){
   const [project,setProject]=useState<Project>(loadProject);
   const [mode,setMode]=useState<ViewMode>('integration');
-  const [selected,setSelected]=useState<{type:'component'|'interface';id:string}|null>(null);
+  const [selected,setSelected]=useState<{type:'component'|'interface'|'capability';id:string}|null>(null);
   const [error,setError]=useState('');
   const fileRef=useRef<HTMLInputElement>(null);
   useEffect(()=>{try{saveProject(project);setError('');}catch(e){setError(e instanceof Error?e.message:'Unable to save project.');}},[project]);
@@ -39,10 +39,11 @@ export default function App(){
     selected:selected?.type==='interface'&&selected.id===e.id
   })),[project,visibleIds,mode,selected]);
   const onNodesChange=useCallback((changes:NodeChange[])=>{
-    // applyNodeChanges normalizes position deltas; we persist only resulting coordinates.
+    const moves=changes.filter(c=>c.type==='position'&&c.position);
+    if(!moves.length)return;
     setProject(prev=>{
       const current:Node[]=prev.components.map(c=>({id:c.id,position:{x:c.x,y:c.y},data:{}}));
-      const next=applyNodeChanges(changes,current);
+      const next=applyNodeChanges(moves,current);
       const positions=new Map(next.map(n=>[n.id,n.position]));
       return {...prev,components:prev.components.map(c=>{const pos=positions.get(c.id);return pos?{...c,x:pos.x,y:pos.y}:c;})};
     });
@@ -56,17 +57,27 @@ export default function App(){
     if(params.nodes[0])setSelected({type:'component',id:params.nodes[0].id});
     else if(params.edges[0])setSelected({type:'interface',id:params.edges[0].id});
   },[]);
+  const selectedCapability=selected?.type==='capability'?project.capabilities.find(c=>c.id===selected.id):undefined;
   const selectedComponent=selected?.type==='component'?project.components.find(c=>c.id===selected.id):undefined;
   const selectedInterface=selected?.type==='interface'?project.interfaces.find(e=>e.id===selected.id):undefined;
+  const setCapability=(patch:Partial<Capability>)=>{if(selectedCapability)setProject(p=>updateCapability(p,selectedCapability.id,patch));};
   const setComponent=(patch:Partial<Component>)=>{if(selectedComponent)setProject(p=>updateComponent(p,selectedComponent.id,patch));};
   const setInterface=(patch:Partial<ArchitectureInterface>)=>{if(selectedInterface)setProject(p=>updateInterface(p,selectedInterface.id,patch));};
   const addComponent=(kind:Component['kind'])=>{
     const item:Component={id:newId('component'),name:'New '+kindNames[kind],description:'',kind,x:100+project.components.length*45,y:160+project.components.length*30};
     setProject(p=>({...p,components:[...p.components,item]}));setSelected({type:'component',id:item.id});
   };
+  const createCapability=(componentId:string)=>{
+    setProject(p=>addCapability(p,componentId));
+    setSelected(null);
+  };
+  const addTemplate=(index:number)=>{
+    setProject(p=>createFromTemplate(p,index));
+    setSelected(null);
+  };
   const removeSelected=()=>{
     if(!selected)return;
-    setProject(p=>selected.type==='component'?removeComponent(p,selected.id):removeInterface(p,selected.id));
+    setProject(p=>selected.type==='component'?removeComponent(p,selected.id):selected.type==='capability'?removeCapability(p,selected.id):removeInterface(p,selected.id));
     setSelected(null);
   };
   const handleImport=async(file?:File)=>{
@@ -77,7 +88,7 @@ export default function App(){
   const reset=()=>{if(window.confirm('Replace this project with the example? Your current local changes will be lost.')){setProject(sampleProject());setSelected(null);}};
   const exportMarkdown=()=>downloadText('architecture-report.md',summarizeModel(project),'text/markdown');
   return <div className="app-shell">
-    <header className="topbar"><div className="brand"><div className="brand-mark">R<span>·</span></div><div><strong>RagDollLabs</strong><span>Integration Architecture Studio <em>0.1</em></span></div></div>
+    <header className="topbar"><div className="brand"><div className="brand-mark">R<span>·</span></div><div><strong>RagDollLabs</strong><span>Integration Architecture Studio <em>0.2 preview</em></span></div></div>
       <div className="top-actions"><button onClick={()=>fileRef.current?.click()}><FileUp size={16}/> Import</button><input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={e=>{void handleImport(e.target.files?.[0]);e.target.value='';}}/>
         <button onClick={()=>exportProject(project)}><Download size={16}/> JSON</button><button onClick={exportMarkdown}><Download size={16}/> Report</button><button className="ghost" onClick={reset} title="Restore example"><RotateCcw size={16}/></button>
       </div></header>
@@ -86,8 +97,10 @@ export default function App(){
         <p className="muted">{project.description}</p><div className="section-caption">VIEWS</div>
         <button className={'nav-btn '+(mode==='integration'?'active':'')} onClick={()=>{setMode('integration');setSelected(null);}}><Boxes size={17}/> Integration view</button>
         <button className={'nav-btn '+(mode==='ai'?'active':'')} onClick={()=>{setMode('ai');setSelected(null);}}><Bot size={17}/> AI capability view</button>
-        <div className="section-caption">ADD COMPONENT</div>
+        <div className="section-caption">COMPONENT TEMPLATES</div><div className="component-buttons">{COMPONENT_TEMPLATES.map((t,i)=><button key={t.name} onClick={()=>addTemplate(i)} title={t.description}><Plus size={14}/>{t.name}</button>)}</div><div className="section-caption">GENERIC COMPONENT</div>
         <div className="component-buttons">{ComponentKind.options.map(k=><button key={k} onClick={()=>addComponent(k)}><Plus size={14}/>{kindNames[k]}</button>)}</div>
+        <div className="section-caption">CAPABILITIES</div>
+        <div className="inventory">{project.capabilities.map(c=><button key={c.id} className={selected?.id===c.id?'chosen':''} onClick={()=>setSelected({type:'capability',id:c.id})}><GitBranchPlus size={14}/><span>{c.name}<small>{c.kind} · {project.components.find(n=>n.id===c.componentId)?.name||'Unknown'}</small></span></button>)}</div>
         <div className="section-caption">INTERFACES</div><div className="inventory">{project.interfaces.filter(e=>mode==='ai'||e.kind==='integration').map(e=><button key={e.id} className={selected?.id===e.id?'chosen':''} onClick={()=>setSelected({type:'interface',id:e.id})}><GitBranchPlus size={14}/><span>{e.name}<small>{e.protocol||'Protocol undecided'}</small></span></button>)}</div>
       </aside>
       <main className="canvas"><div className="canvas-toolbar"><span className="eyebrow">{mode==='integration'?'SYSTEM CONNECTIVITY':'AI CAPABILITY & ACCESS'}</span><span className="muted">{nodes.length} components · {edges.length} interfaces</span></div>
@@ -103,6 +116,23 @@ export default function App(){
           <label>Type<select value={selectedComponent.kind} onChange={e=>setComponent({kind:ComponentKind.parse(e.target.value)})}>{ComponentKind.options.map(k=><option key={k} value={k}>{kindNames[k]}</option>)}</select></label>
           <label>Description<textarea value={selectedComponent.description} onChange={e=>setComponent({description:e.target.value})}/></label>
           <p className="muted">ID: {selectedComponent.id}</p>
+          <button className="add-capability" onClick={()=>createCapability(selectedComponent.id)}>+ Add capability to this asset</button>
+          <div className="component-capabilities"><strong>Exposed capabilities</strong>{project.capabilities.filter(c=>c.componentId===selectedComponent.id).map(c=><button key={c.id} onClick={()=>setSelected({type:'capability',id:c.id})}>{c.name} <small>({c.kind})</small></button>)}</div>
+        </div>:selectedCapability?<div className="fields"><h2>{selectedCapability.name}</h2>
+          <p className="muted">Owned by {project.components.find(c=>c.id===selectedCapability.componentId)?.name}</p>
+          <label>Capability name<input value={selectedCapability.name} onChange={e=>setCapability({name:e.target.value})}/></label>
+          <label>Kind<select value={selectedCapability.kind} onChange={e=>setCapability({kind:CapabilitySchema.shape.kind.parse(e.target.value)})}>
+            {CapabilitySchema.shape.kind.options.map(k=><option key={k} value={k}>{k}</option>)}
+          </select></label>
+          <label>Operation<input value={selectedCapability.operation} onChange={e=>setCapability({operation:e.target.value})}/></label>
+          <label>Description<textarea value={selectedCapability.description} onChange={e=>setCapability({description:e.target.value})}/></label>
+          <label>Effective operation<select value={selectedCapability.access} onChange={e=>setCapability({access:CapabilitySchema.shape.access.parse(e.target.value)})}>
+            {CapabilitySchema.shape.access.options.map(v=><option key={v} value={v}>{v}</option>)}
+          </select></label>
+          <label>Evidence<select value={selectedCapability.evidence} onChange={e=>setCapability({evidence:CapabilitySchema.shape.evidence.parse(e.target.value)})}>
+            {CapabilitySchema.shape.evidence.options.map(v=><option key={v} value={v}>{v}</option>)}
+          </select></label>
+          <p className="muted">Template and declared entries are not proof of deployed capability or authorization.</p>
         </div>:selectedInterface?<div className="fields"><h2>{selectedInterface.name}</h2>
           <label>Name<input value={selectedInterface.name} onChange={e=>setInterface({name:e.target.value})}/></label>
           <label>Interface type<select value={selectedInterface.kind} onChange={e=>setInterface({kind:InterfaceKind.parse(e.target.value)})}>{InterfaceKind.options.map(k=><option key={k} value={k}>{k}</option>)}</select></label>
