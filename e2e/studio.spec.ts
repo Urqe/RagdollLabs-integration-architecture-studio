@@ -29,7 +29,7 @@ test('template component can be created and edited',async({page})=>{
 test('JSON export contains valid project and modeled capabilities',async({page})=>{
   await page.goto('/');
   const downloadPromise=page.waitForEvent('download');
-  await page.getByRole('button',{name:'JSON'}).click();
+  await page.getByRole('button',{name:'JSON',exact:true}).click();
   const download=await downloadPromise;
   expect(download.suggestedFilename()).toBe('architecture-project.json');
   const contents=await (await import('node:fs/promises')).readFile(await download.path(),'utf8');
