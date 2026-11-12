@@ -1,9 +1,10 @@
-import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import {useCallback,useEffect,useMemo,useReducer,useRef,useState} from 'react';
 import {ReactFlow,Background,Controls,MiniMap,MarkerType,applyNodeChanges,type Node,type Edge,type NodeChange,type Connection,type OnSelectionChangeParams} from '@xyflow/react';
-import {Bot,Boxes,Download,FileUp,GitBranchPlus,Plus,RotateCcw,ShieldCheck,Trash2} from 'lucide-react';
+import {Bot,Boxes,Download,FileUp,GitBranchPlus,Plus,RotateCcw,Undo2,Redo2,ShieldCheck,Trash2} from 'lucide-react';
 import {ComponentKind,COMPONENT_TEMPLATES,CapabilitySchema,addCapability,createFromTemplate,updateCapability,removeCapability,InterfaceKind,newId,removeComponent,removeInterface,sampleProject,updateComponent,updateInterface,type ArchitectureInterface,type Component,type Capability,type Project,type ViewMode} from './model';
 import {loadProject,saveProject,exportProject,importProject} from './storage';
 import {validateProject} from './validation';
+import {historyReducer,initialHistory} from './history';
 
 const kindNames:Record<Component['kind'],string>={system:'System',ipaas:'iPaaS',gateway:'Tool gateway',agent:'AI agent',external:'External service'};
 const emptyInterface=(sourceId:string,targetId:string,kind:ArchitectureInterface['kind']):ArchitectureInterface=>({
@@ -21,7 +22,11 @@ function downloadText(name:string,text:string,type:string):void {
   const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 export default function App(){
-  const [project,setProject]=useState<Project>(loadProject);
+  const [history,dispatch]=useReducer(historyReducer,undefined,()=>initialHistory(loadProject()));
+  const project=history.present;
+  const setProject=useCallback((update:Project|((previous:Project)=>Project))=>dispatch({type:'edit',update}),[]);
+  const undo=useCallback(()=>dispatch({type:'undo'}),[]);
+  const redo=useCallback(()=>dispatch({type:'redo'}),[]);
   const [mode,setMode]=useState<ViewMode>('integration');
   const [selected,setSelected]=useState<{type:'component'|'interface'|'capability';id:string}|null>(null);
   const [error,setError]=useState('');
@@ -41,13 +46,28 @@ export default function App(){
   const onNodesChange=useCallback((changes:NodeChange[])=>{
     const moves=changes.filter(c=>c.type==='position'&&c.position);
     if(!moves.length)return;
-    setProject(prev=>{
+    dispatch({type:'move',update:prev=>{
       const current:Node[]=prev.components.map(c=>({id:c.id,position:{x:c.x,y:c.y},data:{}}));
       const next=applyNodeChanges(moves,current);
       const positions=new Map(next.map(n=>[n.id,n.position]));
       return {...prev,components:prev.components.map(c=>{const pos=positions.get(c.id);return pos?{...c,x:pos.x,y:pos.y}:c;})};
-    });
+    }});
   },[]);
+  useEffect(()=>{
+    const onKeyDown=(event:KeyboardEvent)=>{
+      const target=event.target as HTMLElement|null;
+      if(target?.closest('input, textarea, select, [contenteditable="true"]'))return;
+      if(!(event.ctrlKey||event.metaKey)||event.altKey)return;
+      if(event.key.toLowerCase()==='z'){
+        event.preventDefault();
+        if(event.shiftKey)redo();else undo();
+      }else if(event.key.toLowerCase()==='y'){
+        event.preventDefault();redo();
+      }
+    };
+    window.addEventListener('keydown',onKeyDown);
+    return ()=>window.removeEventListener('keydown',onKeyDown);
+  },[undo,redo]);
   const connect=useCallback((connection:Connection)=>{
     if(!connection.source||!connection.target||connection.source===connection.target)return;
     const kind=mode==='ai'?'tool':'integration';
@@ -91,7 +111,7 @@ export default function App(){
   const exportMarkdown=()=>downloadText('architecture-report.md',summarizeModel(project),'text/markdown');
   return <div className="app-shell">
     <header className="topbar"><div className="brand"><div className="brand-mark">R<span>·</span></div><div><strong>RagDollLabs</strong><span>Integration Architecture Studio <em>0.2 preview</em></span></div></div>
-      <div className="top-actions"><button onClick={()=>fileRef.current?.click()}><FileUp size={16}/> Import</button><input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={e=>{void handleImport(e.target.files?.[0]);e.target.value='';}}/>
+      <div className="top-actions"><button aria-label="Undo" disabled={!history.past.length} onClick={undo} title="Undo (Ctrl/Cmd+Z)"><Undo2 size={16}/> Undo</button><button aria-label="Redo" disabled={!history.future.length} onClick={redo} title="Redo (Ctrl/Cmd+Shift+Z)"><Redo2 size={16}/> Redo</button><button onClick={()=>fileRef.current?.click()}><FileUp size={16}/> Import</button><input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={e=>{void handleImport(e.target.files?.[0]);e.target.value='';}}/>
         <button onClick={()=>exportProject(project)}><Download size={16}/> JSON</button><button onClick={exportMarkdown}><Download size={16}/> Report</button><button className="ghost" onClick={reset} title="Restore example"><RotateCcw size={16}/></button>
       </div></header>
     <div className="workspace">
@@ -106,7 +126,7 @@ export default function App(){
         <div className="section-caption">INTERFACES</div><div className="inventory">{project.interfaces.filter(e=>mode==='ai'||e.kind==='integration').map(e=><button key={e.id} className={selected?.id===e.id?'chosen':''} onClick={()=>setSelected({type:'interface',id:e.id})}><GitBranchPlus size={14}/><span>{e.name}<small>{e.protocol||'Protocol undecided'}</small></span></button>)}</div>
       </aside>
       <main className="canvas"><div className="canvas-toolbar"><span className="eyebrow">{mode==='integration'?'SYSTEM CONNECTIVITY':'AI CAPABILITY & ACCESS'}</span><span className="muted">{nodes.length} components · {edges.length} interfaces</span></div>
-        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onConnect={connect} onSelectionChange={selection} onPaneClick={()=>setSelected(null)} fitView fitViewOptions={{padding:.25}} minZoom={.3} maxZoom={1.8} nodesConnectable>
+        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onNodeDragStart={()=>dispatch({type:'drag-start'})} onNodeDragStop={()=>dispatch({type:'drag-stop'})} onConnect={connect} onSelectionChange={selection} onPaneClick={()=>setSelected(null)} fitView fitViewOptions={{padding:.25}} minZoom={.3} maxZoom={1.8} nodesConnectable>
           <Background color="#2c3950" gap={22} size={1}/><MiniMap nodeColor="#435775" maskColor="rgba(9,14,24,.65)" pannable zoomable/><Controls/>
         </ReactFlow>
         <div className="canvas-help">Drag nodes to reposition · Drag between handles to connect · Select an object to inspect</div>
