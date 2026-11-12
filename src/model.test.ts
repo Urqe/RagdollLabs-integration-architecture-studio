@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { addCapability,createFromTemplate,parseProject,removeComponent,removeCapability,sampleProject,updateComponent } from './model';
+import { addCapability,createFromTemplate,parseProject,removeComponent,removeCapability,sampleProject,updateComponent,updateInterface } from './model';
 import {validateProject} from './validation';
 
 describe('architecture model',()=>{
@@ -18,7 +18,7 @@ describe('architecture model',()=>{
     expect(q.interfaces.every(e=>e.sourceId!=='sap'&&e.targetId!=='sap')).toBe(true);
   });
   it('loads legacy projects without capabilities and preserves the default example',()=>{
-    const legacy=sampleProject() as Record<string,unknown>;delete legacy.capabilities;
+    const legacy=sampleProject() as Record<string,unknown>;delete legacy.capabilities;for(const link of legacy.interfaces as Record<string,unknown>[]){delete link.capabilityId;}
     expect(parseProject(legacy).capabilities).toEqual([]);
     expect(sampleProject().capabilities.some(c=>c.kind==='mcp-tool')).toBe(true);
   });
@@ -38,6 +38,19 @@ describe('architecture model',()=>{
     const next=addCapability(project,'sap','mcp-tool');
     expect(next.capabilities.length).toBe(4);
     expect(removeCapability(next,next.capabilities.at(-1)!.id).capabilities.length).toBe(3);
+  });
+  it('rejects a capability bound to the wrong target asset',()=>{
+    const p=sampleProject();
+    const tool=p.interfaces.find(e=>e.id==='tool-invoke')!;
+    tool.capabilityId='erp-read-cap';
+    expect(()=>parseProject(p)).toThrow();
+  });
+  it('clears capability bindings when capability is removed or interface retargeted',()=>{
+    const p=sampleProject();
+    const q=removeCapability(p,'invoice-read-cap');
+    expect(q.interfaces.find(e=>e.id==='tool-invoke')?.capabilityId).toBeUndefined();
+    const reTarget=updateInterface(p,'tool-invoke',{targetId:'sap'});
+    expect(reTarget.interfaces.find(e=>e.id==='tool-invoke')?.capabilityId).toBeUndefined();
   });
   it('highlights unknown idempotency and enforcement',()=>{
     const findings=validateProject(sampleProject());

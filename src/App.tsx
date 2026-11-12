@@ -13,7 +13,7 @@ const emptyInterface=(sourceId:string,targetId:string,kind:ArchitectureInterface
 });
 function summarizeModel(p:Project):string {
   return '# '+p.name+'\n\n'+p.description+'\n\n## Components\n'+p.components.map(c=>'- '+c.name+' ('+kindNames[c.kind]+'): '+c.description).join('\n')+
-  '\n\n## Capabilities\n'+p.capabilities.map(c=>'- '+c.name+' ('+c.kind+') on '+p.components.find(n=>n.id===c.componentId)?.name+'; '+c.operation+'; evidence: '+c.evidence).join('\n')+ '\n\n## Interfaces\n'+p.interfaces.map(e=>'- **'+e.name+'**: '+p.components.find(c=>c.id===e.sourceId)?.name+' → '+p.components.find(c=>c.id===e.targetId)?.name+' | '+e.protocol+' | '+e.kind+' | owner: '+(e.owner||'Unknown')).join('\n')+
+  '\n\n## Capabilities\n'+p.capabilities.map(c=>'- '+c.name+' ('+c.kind+') on '+p.components.find(n=>n.id===c.componentId)?.name+'; '+c.operation+'; evidence: '+c.evidence).join('\n')+ '\n\n## Interfaces\n'+p.interfaces.map(e=>'- **'+e.name+'**: '+p.components.find(c=>c.id===e.sourceId)?.name+' → '+p.components.find(c=>c.id===e.targetId)?.name+' | '+e.protocol+' | '+e.kind+' | consumes: '+(p.capabilities.find(c=>c.id===e.capabilityId)?.name||'unspecified')+' | owner: '+(e.owner||'Unknown')).join('\n')+
   '\n\n## Validation findings\n'+validateProject(p).map(f=>'- ['+f.severity+'] '+f.interfaceId+': '+f.message).join('\n')+'\n';
 }
 function downloadText(name:string,text:string,type:string):void {
@@ -30,11 +30,11 @@ export default function App(){
   const findings=useMemo(()=>validateProject(project),[project]);
   const visibleIds=useMemo(()=>new Set(project.components.filter(c=>mode==='integration'?c.kind!=='agent':true).map(c=>c.id)),[project,mode]);
   const nodes:Node[]=useMemo(()=>project.components.filter(c=>visibleIds.has(c.id)).map(c=>({
-    id:c.id,position:{x:c.x,y:c.y},data:{label:<div className="node-content"><span className="node-kind">{kindNames[c.kind]}</span><strong>{c.name}</strong><small>{c.description}</small></div>},
+    id:c.id,position:{x:c.x,y:c.y},data:{label:<div className="node-content"><span className="node-kind">{kindNames[c.kind]}</span><strong>{c.name}</strong><small>{c.description}</small><small>{project.capabilities.filter(cap=>cap.componentId===c.id).length} modeled capabilities</small></div>},
     className:'architecture-node node-'+c.kind,selected:selected?.type==='component'&&selected.id===c.id
   })),[project,visibleIds,selected]);
   const edges:Edge[]=useMemo(()=>project.interfaces.filter(e=>visibleIds.has(e.sourceId)&&visibleIds.has(e.targetId)&&(mode==='ai'||e.kind==='integration')).map(e=>({
-    id:e.id,source:e.sourceId,target:e.targetId,label:e.name,type:'smoothstep',animated:e.kind==='tool',
+    id:e.id,source:e.sourceId,target:e.targetId,label:e.name+(e.capabilityId?' · '+(project.capabilities.find(c=>c.id===e.capabilityId)?.name||'') : ''),type:'smoothstep',animated:e.kind==='tool',
     markerEnd:{type:MarkerType.ArrowClosed},className:e.kind==='tool'?'edge-tool':'edge-integration',
     selected:selected?.type==='interface'&&selected.id===e.id
   })),[project,visibleIds,mode,selected]);
@@ -62,7 +62,9 @@ export default function App(){
   const selectedInterface=selected?.type==='interface'?project.interfaces.find(e=>e.id===selected.id):undefined;
   const setCapability=(patch:Partial<Capability>)=>{if(selectedCapability)setProject(p=>updateCapability(p,selectedCapability.id,patch));};
   const setComponent=(patch:Partial<Component>)=>{if(selectedComponent)setProject(p=>updateComponent(p,selectedComponent.id,patch));};
-  const setInterface=(patch:Partial<ArchitectureInterface>)=>{if(selectedInterface)setProject(p=>updateInterface(p,selectedInterface.id,patch));};
+  const setInterface=(patch:Partial<ArchitectureInterface>)=>{
+    if(selectedInterface)setProject(p=>updateInterface(p,selectedInterface.id,patch));
+  };
   const addComponent=(kind:Component['kind'])=>{
     const item:Component={id:newId('component'),name:'New '+kindNames[kind],description:'',kind,x:100+project.components.length*45,y:160+project.components.length*30};
     setProject(p=>({...p,components:[...p.components,item]}));setSelected({type:'component',id:item.id});
@@ -138,6 +140,10 @@ export default function App(){
           <label>Interface type<select value={selectedInterface.kind} onChange={e=>setInterface({kind:InterfaceKind.parse(e.target.value)})}>{InterfaceKind.options.map(k=><option key={k} value={k}>{k}</option>)}</select></label>
           <label>Source<select value={selectedInterface.sourceId} onChange={e=>setInterface({sourceId:e.target.value})}>{project.components.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           <label>Target<select value={selectedInterface.targetId} onChange={e=>setInterface({targetId:e.target.value})}>{project.components.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+          <label>Consumed capability<select value={selectedInterface.capabilityId||''} onChange={e=>setInterface({capabilityId:e.target.value||undefined})}>
+            <option value="">Unspecified</option>
+            {project.capabilities.filter(c=>c.componentId===selectedInterface.targetId).map(c=><option key={c.id} value={c.id}>{c.name} ({c.kind})</option>)}
+          </select></label>
           {(['protocol','authentication','authorization','contract','owner','description'] as const).map(k=><label key={k}>{k}<input value={selectedInterface[k]} onChange={e=>setInterface({[k]:e.target.value})}/></label>)}
           {(['access','idempotency','observability','enforcement'] as const).map(k=><label key={k}>{k}<select value={selectedInterface[k]} onChange={e=>setInterface({[k]:e.target.value})}>{(k==='access'?['unknown','read','write','approve']:k==='enforcement'?['unknown','documented','verified','not-applicable']:['unknown','defined','not-applicable']).map(v=><option key={v} value={v}>{v}</option>)}</select></label>)}
           <p className="muted">Documentation is not evidence of runtime enforcement.</p>

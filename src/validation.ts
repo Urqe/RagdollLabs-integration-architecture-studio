@@ -7,6 +7,7 @@ export function validateProject(project:Project):Finding[] {
     findings.push({id:rule+':'+e.id,interfaceId:e.id,severity,message});
   };
   for(const e of project.interfaces){
+    if(e.kind==='tool'&&!e.capabilityId)add(e,'capability','warning','AI tool invocation has no modeled target capability.');
     if(!e.owner.trim()) add(e,'owner','warning','Technical owner is not defined.');
     if(!e.authentication.trim()) add(e,'auth','warning','Authentication is not defined.');
     if(!e.authorization.trim()) add(e,'authorization','warning','Authorization is not defined.');
